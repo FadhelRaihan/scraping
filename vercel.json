@@ -1,5 +1,0 @@
-{
-  "rewrites": [
-    { "source": "/api/:path*", "destination": "https://prospek-admin.fly.dev/api/:path*" }
-  ]
-}
