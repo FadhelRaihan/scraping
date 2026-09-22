@@ -1,0 +1,27 @@
+app = "prospek-admin"
+primary_region = "sin"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  PORT = "3001"
+  HEADLESS = "1"
+  NODE_ENV = "production"
+
+[mounts]
+  source = "prospek_data"
+  destination = "/app/data"
+
+[http_service]
+  internal_port = 3001
+  force_https = true
+  auto_stop_machines = "off"
+  auto_start_machines = true
+  min_machines_running = 1
+  processes = ["app"]
+
+[[vm]]
+  memory = "2gb"
+  cpu_kind = "shared"
+  cpus = 1
