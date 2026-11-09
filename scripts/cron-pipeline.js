@@ -1,6 +1,74 @@
 import { spawn } from 'node:child_process';
+import { readFile } from 'node:fs/promises';
 import { createPool } from '../apps/backend/db.js';
 import { getDailyQuota, runDailyOutreach, sendDailyDigest } from '../apps/backend/auto-outreach.js';
+import { quality } from '../apps/scraper/quality.js';
+import { cityFromAddress } from '../apps/backend/core.js';
+
+/**
+ * Sinkronisasi langsung dari data/state.json ke PostgreSQL database.
+ * Menjamin hasil scraping langsung masuk ke tabel leads tanpa bergantung pada network API sync.
+ */
+export async function syncStateToDatabase(pool, statePath = 'data/state.json') {
+  try {
+    const raw = await readFile(statePath, 'utf8');
+    const state = JSON.parse(raw);
+    const results = Object.entries(state.results || {});
+    if (!results.length) return 0;
+
+    let syncedCount = 0;
+    for (const [place_key, d] of results) {
+      if (!d || !d.nama) continue;
+      const metadata = {
+        ...quality(d),
+        jumlah_ulasan: d.jumlah_ulasan ?? null,
+        kategori_maps: d.kategori_maps ?? [],
+        status_operasional: d.status_operasional ?? 'unknown',
+        jam_buka_raw: d.jam_buka_raw ?? null,
+        latitude: d.latitude ?? null,
+        longitude: d.longitude ?? null,
+        kategori_pencarian: d.kategori_pencarian || [d.label_pencarian?.split(' di ')[0]].filter(Boolean),
+      };
+
+      const values = [
+        place_key,
+        d.nama,
+        d.alamat || '',
+        cityFromAddress(d.alamat || ''),
+        d.rating === '' || d.rating == null ? null : d.rating,
+        d.telepon || '',
+        d.website || '',
+        d.label_pencarian ? d.label_pencarian.split(' di ')[0] : (d.categories?.[0] || ''),
+        d.label_pencarian || '',
+        d.url_maps || '',
+        d.ulasan_terbaru || '',
+        d.diambil_pada || new Date().toISOString(),
+        JSON.stringify(metadata)
+      ];
+
+      await pool.query(
+        `INSERT INTO leads (place_key,nama,alamat,kota,rating,telepon,website,kategori,label_pencarian,url_maps,ulasan_terbaru,scraped_at,quality)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+         ON CONFLICT (place_key) DO UPDATE SET
+           nama=EXCLUDED.nama,alamat=EXCLUDED.alamat,kota=EXCLUDED.kota,
+           rating=EXCLUDED.rating,telepon=EXCLUDED.telepon,website=EXCLUDED.website,
+           kategori=EXCLUDED.kategori,label_pencarian=EXCLUDED.label_pencarian,
+           url_maps=EXCLUDED.url_maps,ulasan_terbaru=EXCLUDED.ulasan_terbaru,
+           scraped_at=EXCLUDED.scraped_at,updated_at=now(),
+           quality=EXCLUDED.quality
+         WHERE EXCLUDED.scraped_at >= leads.scraped_at`,
+        values
+      );
+      syncedCount++;
+    }
+    return syncedCount;
+  } catch (err) {
+    if (err.code !== 'ENOENT') {
+      console.warn('[Sync] Catatan saat membaca data/state.json:', err.message);
+    }
+    return 0;
+  }
+}
 
 /**
  * Menjalankan satu putaran penuh pipeline:
@@ -14,6 +82,13 @@ export async function executePipeline() {
 
   try {
     const dailyLimit = Number(process.env.WA_DAILY_LIMIT ?? 30);
+
+    // 1. Sinkronkan lead yang sudah ada di data/state.json ke database
+    const initialSynced = await syncStateToDatabase(pool);
+    if (initialSynced > 0) {
+      console.log(`[Cron Pipeline] Sinkronisasi ${initialSynced} lead dari data lokal ke database.`);
+    }
+
     const quotaBefore = await getDailyQuota(pool, dailyLimit);
 
     console.log(`[Cron Pipeline] Status Kuota Hari Ini:`);
@@ -74,6 +149,10 @@ export async function executePipeline() {
           resolve();
         });
       });
+
+      // 2. Sinkronkan hasil scraping terbaru langsung ke database
+      const syncedAfterScrape = await syncStateToDatabase(pool);
+      console.log(`[Cron Pipeline] Berhasil sinkronisasi ${syncedAfterScrape} lead ke database.`);
 
       // Hitung pertambahan stok setelah scraping
       const quotaAfterScrape = await getDailyQuota(pool, dailyLimit);

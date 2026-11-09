@@ -93,6 +93,7 @@ export async function runDailyOutreach(pool, options = {}) {
       AND l.telepon != ''
       AND NOT EXISTS (SELECT 1 FROM lead_contacts lc WHERE lc.lead_id = l.id)
     ORDER BY
+      CASE WHEN l.telepon ~ '^\+?(62|0)8' THEN 0 ELSE 1 END,
       CASE WHEN l.website = '' THEN 0 ELSE 1 END,
       l.rating DESC NULLS LAST,
       l.scraped_at DESC
