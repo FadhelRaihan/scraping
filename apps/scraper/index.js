@@ -9,9 +9,23 @@ import { newCheckpoint } from './checkpoint.js';
 
 const runtimeConfig=parseConfig(process.env.SCRAPE_CONFIG_JSON?JSON.parse(process.env.SCRAPE_CONFIG_JSON):{...defaults,hours:Number(process.env.HOURS??4.5)});
 const hours = runtimeConfig.hours;
+const targetLeads = Number(process.env.TARGET_LEADS || 0);
 if (!Number.isFinite(hours) || hours <= 0 || hours > 24) throw new Error('HOURS harus > 0 dan <= 24');
 const cities = ['Kota Bandung', 'Kota Bogor', 'Kota Bekasi', 'Kota Depok', 'Kabupaten Bandung', 'Kabupaten Bogor', 'Kabupaten Bekasi', 'Kota Cimahi', 'Kota Cirebon', 'Kabupaten Bandung Barat', 'Kabupaten Cirebon', 'Kabupaten Sumedang', 'Kabupaten Garut', 'Kabupaten Cianjur', 'Kabupaten Sukabumi', 'Kota Sukabumi', 'Kabupaten Tasikmalaya', 'Kota Tasikmalaya', 'Kabupaten Ciamis', 'Kota Banjar', 'Kabupaten Pangandaran', 'Kabupaten Kuningan', 'Kabupaten Majalengka', 'Kabupaten Indramayu', 'Kabupaten Subang', 'Kabupaten Purwakarta', 'Kabupaten Karawang'];
-const keywords = ['Restoran', 'Cafe', 'Rumah Makan', 'Kedai Kopi', 'Warung Makan', 'Toko Roti'];
+const keywords = [
+  'Restoran',
+  'Cafe',
+  'Rumah Makan',
+  'Kedai Kopi',
+  'Warung Makan',
+  'Toko Roti',
+  'Katering',
+  'Toko Oleh-Oleh',
+  'Toko Kue',
+  'Coffee Roastery',
+  'Gelato',
+  'Resto & Lounge'
+];
 const queries = queriesFor(runtimeConfig);
 await mkdir('data', { recursive: true });
 const lock = await open('data/session.lock', 'wx').catch(() => { throw new Error('Sesi terkunci. Pastikan proses lain berhenti sebelum menghapus data/session.lock.'); });
@@ -205,7 +219,15 @@ try {
       processed.set(key, item.status);
       const observed=history.places[key] ||= {queries:[item.query],discovered_at:null};
       Object.assign(observed,{processed_at:new Date().toISOString(),result_status:item.status,snapshot:result.row||null});
-      if (result.status === 'recent') { state.results[key] = result.row; lastSuccess = new Date().toISOString(); }
+      if (result.status === 'recent') {
+        state.results[key] = result.row;
+        lastSuccess = new Date().toISOString();
+        const validCount = [...processed.values()].filter(v => v === 'recent').length;
+        if (targetLeads > 0 && validCount >= targetLeads) {
+          console.log(`Target ${targetLeads} lead valid tercapai (${validCount}). Menghentikan scraping.`);
+          stop('target_reached');
+        }
+      }
       console.log(`${item.status}: ${result.row?.nama ?? item.url} | lolos ${Object.keys(state.results).length}`);
     } catch (error) {
       if (stopping || classify(error).fatal) throw error;

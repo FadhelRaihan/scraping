@@ -1,5 +1,18 @@
 export const cities=['Kota Bandung','Kota Bogor','Kota Bekasi','Kota Depok','Kabupaten Bandung','Kabupaten Bogor','Kabupaten Bekasi','Kota Cimahi','Kota Cirebon','Kabupaten Bandung Barat','Kabupaten Cirebon','Kabupaten Sumedang','Kabupaten Garut','Kabupaten Cianjur','Kabupaten Sukabumi','Kota Sukabumi','Kabupaten Tasikmalaya','Kota Tasikmalaya','Kabupaten Ciamis','Kota Banjar','Kabupaten Pangandaran','Kabupaten Kuningan','Kabupaten Majalengka','Kabupaten Indramayu','Kabupaten Subang','Kabupaten Purwakarta','Kabupaten Karawang'];
-export const keywords=['Restoran','Cafe','Rumah Makan','Kedai Kopi','Warung Makan','Toko Roti'];
+export const keywords=[
+  'Restoran',
+  'Cafe',
+  'Rumah Makan',
+  'Kedai Kopi',
+  'Warung Makan',
+  'Toko Roti',
+  'Katering',
+  'Toko Oleh-Oleh',
+  'Toko Kue',
+  'Coffee Roastery',
+  'Gelato',
+  'Resto & Lounge'
+];
 export const defaults={hours:4.5,cities,keywords,mode:'resume'};
 export function parseConfig(input={}){
  const fail=()=>{throw Object.assign(new Error('Konfigurasi tidak valid: durasi 0,25–24 jam (kelipatan 0,25), pilih wilayah dan kategori tersedia.'),{statusCode:400})};

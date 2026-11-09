@@ -9,13 +9,36 @@ import {Checkbox} from '@/components/ui/checkbox';
 import {Alert,AlertTitle,AlertDescription} from '@/components/ui/alert';
 async function api(path,method='GET',body){const r=await fetch(`/api${path}`,{method,headers:{'content-type':'application/json'},...(body?{body:JSON.stringify(body)}:{})});const d=await r.json();if(!r.ok)throw Error(d.error||'Permintaan gagal');return d;}
 function ErrorBox({error}){return error?<Alert variant="destructive"><AlertTitle>Operasi gagal</AlertTitle><AlertDescription>{error}</AlertDescription></Alert>:null}
+const defaultTemplate = {
+  name: 'Penawaran Website & Sistem Internal',
+  body: `{Halo|Selamat {{salam}}|Permisi} kak, salam kenal dari kami.
+
+{Kami perhatikan|Kebetulan kami melihat} profil {{nama_singkat}} di Google Maps cukup ramai pengunjung{{pujian_rating}}.
+
+Perkenalkan, kami dari tim software & web development di Jawa Barat. Kami ingin menawarkan solusi digital untuk mendukung kemajuan {{nama_singkat}}:
+
+1. 🌐 *Website Profile Usaha (Company Profile)*
+   Tampil lebih profesional di pencarian Google, mudah ditemukan calon pelanggan, serta terhubung langsung ke WhatsApp & medsos.
+
+2. ⚙️ *Website Sistem Internal Bisnis*
+   Digitalisasi operasional seperti sistem Kasir Online (POS), Manajemen Stok/Inventaris, ERP, maupun CMS khusus agar pencatatan usaha rapi dan bebas repot.
+
+3. 🛠️ *Website & Aplikasi Custom Lainnya*
+   Pembuatan sistem berbasis web yang dirancang khusus mengikuti alur kerja dan kebutuhan unik bisnis Anda.
+
+{Apakah boleh kami kirimkan contoh portofolio & estimasi biayanya?|Kira-kira kapan ada waktu luang sebentar untuk ngobrol santai seputar kebutuhan websitenya?}
+
+Terima kasih banyak kak, semoga {{nama_singkat}} semakin laris dan sukses selalu! 🙏`,
+  is_active: true,
+};
+
 export function Templates(){
  const[items,setItems]=useState([]),[form,setForm]=useState({name:'',body:'',is_active:true}),[error,setError]=useState(''),[busy,setBusy]=useState(false);
  const load=()=>api('/message-templates').then(setItems);
  useEffect(()=>{load().catch(e=>setError(e.message))},[]);
  async function save(e){e.preventDefault();setBusy(true);setError('');try{await api(`/message-templates${form.id?'/'+form.id:''}`,form.id?'PUT':'POST',form);setForm({name:'',body:'',is_active:true});await load()}catch(e){setError(e.message)}finally{setBusy(false)}}
  async function remove(t){if(!window.confirm(`Hapus template "${t.name}" secara permanen? Histori kontak tetap tersimpan.`))return;setBusy(true);try{await api(`/message-templates/${t.id}`,'DELETE',{confirm:true});if(form.id===t.id)setForm({name:'',body:'',is_active:true});await load()}catch(e){setError(e.message)}finally{setBusy(false)}}
- return <main className="page"><h1>Template pesan</h1><ErrorBox error={error}/><Card><CardHeader><CardTitle>{form.id?'Edit template':'Buat template'}</CardTitle><CardDescription>Variabel: {'{{nama}}, {{kategori}}, {{kota}}, {{rating}}, {{website}}'}. Preview tersedia di detail lead.</CardDescription></CardHeader><CardContent><form onSubmit={save}><FieldGroup><Field><FieldLabel htmlFor="template-name">Nama template</FieldLabel><Input id="template-name" required maxLength={100} value={form.name} onChange={e=>setForm({...form,name:e.target.value})}/></Field><Field><FieldLabel htmlFor="template-body">Isi pesan</FieldLabel><Textarea id="template-body" required maxLength={2000} rows={7} value={form.body} onChange={e=>setForm({...form,body:e.target.value})}/></Field><Field orientation="horizontal"><Checkbox id="template-active" checked={form.is_active} onCheckedChange={v=>setForm({...form,is_active:v===true})}/><FieldLabel htmlFor="template-active">Aktif</FieldLabel></Field><div className="flex gap-2"><Button disabled={busy}>Simpan template</Button>{form.id&&<Button type="button" variant="outline" onClick={()=>setForm({name:'',body:'',is_active:true})}>Batal edit</Button>}</div></FieldGroup></form></CardContent></Card>{items.map(t=><Card key={t.id}><CardHeader><CardTitle>{t.name}</CardTitle><CardDescription>{t.is_active?'Aktif':'Nonaktif'}</CardDescription></CardHeader><CardContent><p className="whitespace-pre-wrap break-words text-sm mb-4">{t.body}</p><div className="flex gap-2"><Button variant="outline" disabled={busy} onClick={()=>setForm(t)}>Edit</Button><Button variant="destructive" disabled={busy} onClick={()=>remove(t)}>Hapus permanen</Button></div></CardContent></Card>)}</main>
+ return <main className="page"><h1>Template pesan</h1><ErrorBox error={error}/><Card><CardHeader><CardTitle>{form.id?'Edit template':'Buat template'}</CardTitle><CardDescription>Variabel: {'{{nama}}, {{nama_singkat}}, {{salam}}, {{pujian_rating}}, {{kategori}}, {{kota}}, {{rating}}, {{website}}'}. Mendukung Spintax {'{pilihan1|pilihan2}'}.</CardDescription></CardHeader><CardContent><form onSubmit={save}><FieldGroup><Field><FieldLabel htmlFor="template-name">Nama template</FieldLabel><Input id="template-name" required maxLength={100} value={form.name} onChange={e=>setForm({...form,name:e.target.value})}/></Field><Field><FieldLabel htmlFor="template-body">Isi pesan</FieldLabel><Textarea id="template-body" required maxLength={2000} rows={10} value={form.body} onChange={e=>setForm({...form,body:e.target.value})}/></Field><Field orientation="horizontal"><Checkbox id="template-active" checked={form.is_active} onCheckedChange={v=>setForm({...form,is_active:v===true})}/><FieldLabel htmlFor="template-active">Aktif</FieldLabel></Field><div className="flex gap-2 flex-wrap"><Button disabled={busy}>Simpan template</Button><Button type="button" variant="outline" disabled={busy} onClick={()=>setForm(defaultTemplate)}>Muat Draf Rekomendasi</Button>{form.id&&<Button type="button" variant="outline" onClick={()=>setForm({name:'',body:'',is_active:true})}>Batal edit</Button>}</div></FieldGroup></form></CardContent></Card>{items.map(t=><Card key={t.id}><CardHeader><CardTitle>{t.name}</CardTitle><CardDescription>{t.is_active?'Aktif':'Nonaktif'}</CardDescription></CardHeader><CardContent><p className="whitespace-pre-wrap break-words text-sm mb-4">{t.body}</p><div className="flex gap-2"><Button variant="outline" disabled={busy} onClick={()=>setForm(t)}>Edit</Button><Button variant="destructive" disabled={busy} onClick={()=>remove(t)}>Hapus permanen</Button></div></CardContent></Card>)}</main>
 }
 export function ContactLead({lead,changed}){
  const[templates,setTemplates]=useState([]),[selected,setSelected]=useState(''),[preview,setPreview]=useState(null),[history,setHistory]=useState([]),[note,setNote]=useState(''),[error,setError]=useState(''),[busy,setBusy]=useState(false),[confirmed,setConfirmed]=useState(false),[blocked,setBlocked]=useState(false);

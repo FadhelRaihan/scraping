@@ -11,6 +11,7 @@ import { registerJobs } from './jobs.js';
 import { quality } from '../scraper/quality.js';
 import { registerHistory } from './history.js';
 import { registerContacting } from './contacting.js';
+import { getDailyQuota, runDailyOutreach, sendDailyDigest } from './auto-outreach.js';
 const derive = promisify(scrypt);
 function equal(a, b) { const x = Buffer.from(a ?? ''); const y = Buffer.from(b ?? ''); return x.length === y.length && timingSafeEqual(x, y); }
 const idSchema = z.string().regex(/^[1-9]\d{0,17}$/);
@@ -66,6 +67,16 @@ export async function buildApp(pool, config = process.env) {
   registerJobs(app, pool, config);
   registerHistory(app, pool);
   registerContacting(app,pool,config);
+  app.get('/api/automation/status', async () => {
+    const dailyLimit = Number(config.WA_DAILY_LIMIT ?? 30);
+    return await getDailyQuota(pool, dailyLimit);
+  });
+  app.post('/api/automation/outreach', async () => {
+    return await runDailyOutreach(pool);
+  });
+  app.post('/api/automation/digest', async () => {
+    return await sendDailyDigest(pool);
+  });
   app.post('/api/auth/logout', async (request, reply) => { sessions.delete(request.sessionId); reply.clearCookie('session', { path: '/' }); return { ok: true }; });
   app.post('/api/internal/leads/upsert', { config: { rateLimit: false } }, async request => {
     const d = leadSchema.parse(request.body);

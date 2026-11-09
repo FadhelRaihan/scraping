@@ -2,9 +2,97 @@ import {z} from 'zod';
 import {createHmac,timingSafeEqual,randomUUID} from 'node:crypto';
 import {readFile} from 'node:fs/promises';
 import {normalizePhone} from '../scraper/quality.js';
-const variables=['nama','kategori','kota','rating','website'];
-export const templateSchema=z.object({name:z.string().trim().min(1).max(100),body:z.string().trim().min(1).max(2000).refine(s=>{const rest=s.replace(/\{\{\s*(\w+)\s*\}\}/g,(match,key)=>variables.includes(key)?'':match);return !/[{}]/.test(rest)},'Variabel template tidak dikenal atau format kurung tidak valid'),is_active:z.boolean().default(true)});
-export const renderTemplate=(body,lead)=>body.replace(/\{\{\s*(\w+)\s*\}\}/g,(_,key)=>String(lead[key]??''));
+const variables=['nama','nama_singkat','kategori','kota','rating','website','salam','pujian_rating'];
+
+export function getGreeting(date = new Date()) {
+  const utcHour = date.getUTCHours();
+  const wibHour = (utcHour + 7) % 24;
+  if (wibHour >= 4 && wibHour < 11) return 'pagi';
+  if (wibHour >= 11 && wibHour < 15) return 'siang';
+  if (wibHour >= 15 && wibHour < 18) return 'sore';
+  return 'malam';
+}
+
+export function cleanBusinessName(name) {
+  if (!name) return '';
+  return name
+    .replace(/\s*[-–—|•].*$/, '')
+    .replace(/\s*\([^)]*\)/g, '')
+    .replace(/\s*\[[^\]]*\]/g, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}
+
+export function formatRatingPraise(rating) {
+  const num = Number(rating);
+  if (num >= 4.5) return ` dengan rating sangat bagus ${num}⭐ di Google Maps`;
+  if (num >= 4.0) return ` dengan ulasan positif rating ${num}⭐ di Google Maps`;
+  return '';
+}
+
+export function parseSpintax(text) {
+  if (!text) return '';
+  const spintaxRegex = /\{([^{}]+)\}/g;
+  let result = text;
+  let loops = 0;
+  while (spintaxRegex.test(result) && loops < 10) {
+    loops++;
+    result = result.replace(spintaxRegex, (_, choices) => {
+      const parts = choices.split('|');
+      const pick = parts[Math.floor(Math.random() * parts.length)];
+      return pick ?? '';
+    });
+  }
+  return result;
+}
+
+export const templateSchema=z.object({
+  name:z.string().trim().min(1).max(100),
+  body:z.string().trim().min(1).max(2000).refine(s=>{
+    let testStr = s.replace(/\{\{\s*(\w+)\s*\}\}/g, (match, key) => variables.includes(key) ? '' : match);
+    const spintaxRegex = /\{[^{}]*\|[^{}]*\}/g;
+    let loops = 0;
+    while (spintaxRegex.test(testStr) && loops < 10) {
+      loops++;
+      testStr = testStr.replace(spintaxRegex, '');
+    }
+    return !/[{}]/.test(testStr);
+  },'Variabel template tidak dikenal atau format kurung/spintax tidak valid'),
+  is_active:z.boolean().default(true)
+});
+
+export const renderTemplate=(body,lead,now = new Date())=>{
+  const enriched = {
+    ...lead,
+    nama_singkat: cleanBusinessName(lead?.nama) || lead?.nama || '',
+    salam: getGreeting(now),
+    pujian_rating: formatRatingPraise(lead?.rating),
+  };
+  const replaced = body.replace(/\{\{\s*(\w+)\s*\}\}/g, (_, key) => String(enriched[key] ?? ''));
+  return parseSpintax(replaced);
+};
+
+export const DEFAULT_OUTREACH_TEMPLATE = {
+  name: 'Penawaran Website & Sistem Internal',
+  body: `{Halo|Selamat {{salam}}|Permisi} kak, salam kenal dari kami.
+
+{Kami perhatikan|Kebetulan kami melihat} profil {{nama_singkat}} di Google Maps cukup ramai pengunjung{{pujian_rating}}.
+
+Perkenalkan, kami dari tim software & web development di Jawa Barat. Kami ingin menawarkan solusi digital untuk mendukung kemajuan {{nama_singkat}}:
+
+1. 🌐 *Website Profile Usaha (Company Profile)*
+   Tampil lebih profesional di pencarian Google, mudah ditemukan calon pelanggan, serta terhubung langsung ke WhatsApp & medsos.
+
+2. ⚙️ *Website Sistem Internal Bisnis*
+   Digitalisasi operasional seperti sistem Kasir Online (POS), Manajemen Stok/Inventaris, ERP, maupun CMS khusus agar pencatatan usaha rapi dan bebas repot.
+
+3. 🛠️ *Website & Aplikasi Custom Lainnya*
+   Pembuatan sistem berbasis web yang dirancang khusus mengikuti alur kerja dan kebutuhan unik bisnis Anda.
+
+{Apakah boleh kami kirimkan contoh websitenya?|Kira-kira kapan ada waktu luang sebentar untuk ngobrol santai seputar kebutuhan websitenya?}
+
+Terima kasih banyak kak, semoga {{nama_singkat}} semakin laris dan sukses selalu! 🙏`
+};
 export async function migrateContacting(db){await db.query(await readFile(new URL('./migrations/004_contacting.sql',import.meta.url),'utf8'));}
 const id=z.string().regex(/^[1-9]\d{0,17}$/);
 function fail(message,statusCode=400){throw Object.assign(Error(message),{statusCode});}

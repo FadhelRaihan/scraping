@@ -369,6 +369,56 @@ function Login({ done }) {
     </main>
   );
 }
+function AutomationCard() {
+  const [data, setData] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState("");
+
+  const load = () => api("/automation/status").then(setData).catch(() => {});
+  useEffect(() => { load(); }, []);
+
+  async function triggerDigest() {
+    setBusy(true);
+    setMsg("");
+    try {
+      const res = await api("/automation/digest", { method: "POST" });
+      if (res.ok) setMsg("Laporan test berhasil dikirim ke WhatsApp Anda.");
+      else setMsg(`Gagal: ${res.reason || res.error}`);
+    } catch (e) {
+      setMsg(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!data) return null;
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Otomatisasi & Kuota Fonnte</CardTitle>
+        <CardDescription>Batas kuota aman pengiriman WhatsApp harian.</CardDescription>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-2 text-sm">
+        <div className="flex justify-between">
+          <span className="text-muted-foreground">Terkirim hari ini</span>
+          <span className="font-semibold">{data.sentToday} / {data.dailyLimit} pesan</span>
+        </div>
+        <Progress value={(data.sentToday / (data.dailyLimit || 1)) * 100} />
+        <div className="flex justify-between text-xs text-muted-foreground">
+          <span>Sisa kuota: {data.remainingQuota} pesan</span>
+          <span>Stok siap kontak: {data.qualifiedUncontacted} lead</span>
+        </div>
+        {msg && <p className="text-xs text-primary mt-2">{msg}</p>}
+      </CardContent>
+      <CardFooter>
+        <Button variant="outline" size="sm" disabled={busy} onClick={triggerDigest}>
+          Test Kirim Laporan ke WA Pribadi
+        </Button>
+      </CardFooter>
+    </Card>
+  );
+}
+
 function Overview() {
   const [stats, setStats] = useState(null);
   const [job, setJob] = useState(null);
@@ -455,24 +505,27 @@ function Overview() {
           </Card>
         ))}
       </div>
-      <Card>
-        <CardHeader>
-          <CardTitle>Aktivitas scraping terakhir</CardTitle>
-          <CardDescription>
-            {job
-              ? `${date(job.started_at)} · ${job.status}`
-              : "Belum ada scraping dari website."}
-          </CardDescription>
-        </CardHeader>
-        <CardFooter>
-          <Button asChild variant="outline">
-            <NavLink to="/scraping">
-              Buka Scraping
-              <ArrowUpRight data-icon="inline-end" />
-            </NavLink>
-          </Button>
-        </CardFooter>
-      </Card>
+      <div className="grid md:grid-cols-2 gap-4">
+        <AutomationCard />
+        <Card>
+          <CardHeader>
+            <CardTitle>Aktivitas scraping terakhir</CardTitle>
+            <CardDescription>
+              {job
+                ? `${date(job.started_at)} · ${job.status}`
+                : "Belum ada scraping dari website."}
+            </CardDescription>
+          </CardHeader>
+          <CardFooter>
+            <Button asChild variant="outline">
+              <NavLink to="/scraping">
+                Buka Scraping
+                <ArrowUpRight data-icon="inline-end" />
+              </NavLink>
+            </Button>
+          </CardFooter>
+        </Card>
+      </div>
     </main>
   );
 }
