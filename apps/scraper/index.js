@@ -184,7 +184,11 @@ try {
   const deadline = Date.now() + hours * 3600000;
   timer = setTimeout(() => stop('time_limit'), hours * 3600000);
   if (stopping) throw new Error('Scraping dihentikan sebelum browser dimulai');
-  browser = await chromium.launchPersistentContext('data/browser-profile', { headless: process.env.HEADLESS === '1', locale: 'id-ID' });
+  browser = await chromium.launchPersistentContext('data/browser-profile', {
+    headless: process.env.HEADLESS === '1',
+    locale: 'id-ID',
+    args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
+  });
   if (stopping) { await browser.close(); throw new Error('Scraping dihentikan saat browser dimulai'); }
   const context = browser;
   const page = await context.newPage();

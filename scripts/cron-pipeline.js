@@ -38,6 +38,17 @@ export async function executePipeline() {
       console.log(`\n[Cron Pipeline] Stok lead kurang ${neededNewLeads} untuk memenuhi kuota ${quotaBefore.remainingQuota}.`);
       console.log(`[Cron Pipeline] Menjalankan Playwright Scraper dengan TARGET_LEADS = ${neededNewLeads}...`);
 
+      let scrapeJobId = null;
+      try {
+        const jobRes = await pool.query(
+          `INSERT INTO scrape_jobs (requested_hours, config_snapshot) VALUES ($1, $2) RETURNING id`,
+          [1.5, JSON.stringify({ mode: 'resume', targetLeads: neededNewLeads })]
+        );
+        scrapeJobId = String(jobRes.rows[0].id);
+      } catch (jobErr) {
+        console.warn(`[Cron Pipeline] Peringatan: Tidak dapat membuat record scrape_jobs awal:`, jobErr.message);
+      }
+
       const startTime = Date.now();
       await new Promise((resolve) => {
         const child = spawn(process.execPath, ['apps/scraper/worker.js'], {
@@ -45,9 +56,11 @@ export async function executePipeline() {
           stdio: 'inherit',
           env: {
             ...process.env,
+            SCRAPE_JOB_ID: scrapeJobId || '',
             HOURS: '1.5', // Safety timeout max 1.5 jam
             TARGET_LEADS: String(neededNewLeads),
             HEADLESS: process.env.HEADLESS || '1',
+            API_URL: process.env.API_URL || 'http://127.0.0.1:3001',
           },
         });
 

@@ -3,7 +3,16 @@ import { persistHistory } from '../backend/history.js';
 import { readFile } from 'node:fs/promises';
 const pool = createPool();
 const client = await pool.connect();
-const id = process.env.SCRAPE_JOB_ID;
+let id = process.env.SCRAPE_JOB_ID;
+if (!id) {
+  try {
+    const fallbackJob = await client.query("INSERT INTO scrape_jobs(requested_hours) VALUES(1.5) RETURNING id");
+    id = String(fallbackJob.rows[0].id);
+    process.env.SCRAPE_JOB_ID = id;
+  } catch (e) {
+    console.error('Gagal membuat fallback scrape_jobs:', e.message);
+  }
+}
 let timer, checking = false, locked = false;
 let logs = [], progress = {}, dbFailed = false;
 let lastHistory='';
