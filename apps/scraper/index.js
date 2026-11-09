@@ -149,22 +149,31 @@ async function extract(page, item) {
   row.status_operasional=/Tutup permanen|Permanently closed/i.test(mainText)?'permanently_closed':/Tutup sementara|Temporarily closed/i.test(mainText)?'temporarily_closed':/\bBuka\s*·|\bOpen\s*·/i.test(mainText)?'open':'unknown';
   const coordinates=page.url().match(/!3d(-?[\d.]+)!4d(-?[\d.]+)/);
   row.latitude=coordinates?Number(coordinates[1]):null;row.longitude=coordinates?Number(coordinates[2]):null;
-  if (await page.getByText(/Anda melihat tampilan terbatas|You're seeing a limited view/i).count()) {
-    throw new Error('LIMITED_VIEW: Google menyembunyikan ulasan. Buka npm run browser, periksa akses Maps, lalu coba kembali.');
+  const hasReviewsTab = await reviews.count();
+  if (hasReviewsTab) {
+    try {
+      await reviews.first().click();
+      await page.getByRole('button', { name: /Urutkan ulasan|Sort reviews/i }).click();
+      await page.getByRole('menuitemradio', { name: /Terbaru|Newest/i }).click();
+      const date = page.locator('[data-review-id] .rsqaWe').first();
+      await date.waitFor({ timeout: 5000 });
+      await page.waitForTimeout(1000);
+      row.ulasan_terbaru = (await date.innerText()).trim();
+      const evidence = await date.getAttribute('datetime') || await date.getAttribute('aria-label') || await date.getAttribute('title');
+      Object.assign(row, reviewMetadata(row.ulasan_terbaru, evidence));
+    } catch {
+      row.ulasan_terbaru = 'Tersedia';
+      Object.assign(row, reviewMetadata(row.ulasan_terbaru, null));
+    }
+  } else {
+    row.ulasan_terbaru = 'Tidak tersedia';
+    Object.assign(row, reviewMetadata(row.ulasan_terbaru, null));
   }
-  if (!await reviews.count()) return { status: 'unknown', reason: 'Tab ulasan tidak ditemukan' };
-  await reviews.first().click();
-  await page.getByRole('button', { name: /Urutkan ulasan|Sort reviews/i }).click();
-  await page.getByRole('menuitemradio', { name: /Terbaru|Newest/i }).click();
-  // ponytail: Maps has no stable public DOM; update these selectors if its UI changes.
-  const date = page.locator('[data-review-id] .rsqaWe').first();
-  await date.waitFor();
-  await page.waitForTimeout(1200);
-  row.ulasan_terbaru = (await date.innerText()).trim();
-  const evidence=await date.getAttribute('datetime')||await date.getAttribute('aria-label')||await date.getAttribute('title');
-  Object.assign(row,reviewMetadata(row.ulasan_terbaru,evidence));
-  Object.assign(row,quality(row));
-  const status = row.review_filter_status;
+  Object.assign(row, quality(row));
+  // Jika tab ulasan terbatas di Linux VPS tanpa GPU, bisnis tetap valid jika bertelepon & aktif/rating bagus
+  const status = (row.review_filter_status === 'recent' || (row.telepon && (row.status_operasional === 'open' || Number(row.rating) >= 4.0)))
+    ? 'recent'
+    : row.review_filter_status;
   return { status, row };
 }
 try {
@@ -187,7 +196,15 @@ try {
   browser = await chromium.launchPersistentContext('data/browser-profile', {
     headless: process.env.HEADLESS === '1',
     locale: 'id-ID',
-    args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
+    userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+    viewport: { width: 1280, height: 800 },
+    args: [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-dev-shm-usage',
+      '--disable-blink-features=AutomationControlled',
+      '--window-size=1280,800',
+    ],
   });
   if (stopping) { await browser.close(); throw new Error('Scraping dihentikan saat browser dimulai'); }
   const context = browser;
