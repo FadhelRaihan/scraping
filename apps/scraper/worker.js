@@ -20,6 +20,7 @@ const original = { log: console.log, error: console.error };
 for (const level of ['log', 'error']) console[level] = (...args) => {
   const message = args.map(String).join(' ').replace(/https?:\/\/\S+/g, '[URL]').slice(0, 1500);
   logs.push({ at: new Date().toISOString(), level, message }); logs = logs.slice(-150);
+  original[level](...args);
 };
 globalThis.scrapeProgress = value => { progress = value; };
 async function tick() {
@@ -44,6 +45,7 @@ try {
   await tick();
   await client.query("UPDATE scrape_jobs SET status=CASE WHEN $2 THEN 'failed' WHEN status='stopping' THEN 'stopped' ELSE 'completed' END,finished_at=now(),stop_reason=$3 WHERE id=$1", [id, Boolean(process.exitCode || dbFailed), dbFailed ? 'database_lost' : progress.stop_reason || (process.exitCode ? 'worker_error' : 'queue_finished')]);
 } catch (e) {
+  original.error('Worker fatal error:', e);
   await client.query("UPDATE scrape_jobs SET status='failed',finished_at=now(),stop_reason=$2 WHERE id=$1", [id, e.message]).catch(() => {});
 } finally {
   clearInterval(timer);
