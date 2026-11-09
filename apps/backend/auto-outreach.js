@@ -93,7 +93,11 @@ export async function runDailyOutreach(pool, options = {}) {
       AND l.telepon != ''
       AND NOT EXISTS (SELECT 1 FROM lead_contacts lc WHERE lc.lead_id = l.id)
     ORDER BY
-      CASE WHEN l.telepon ~ '^\+?(62|0)8' THEN 0 ELSE 1 END,
+      CASE
+        WHEN (REGEXP_REPLACE(l.telepon, '[^0-9]', '', 'g') LIKE '08%'
+          OR REGEXP_REPLACE(l.telepon, '[^0-9]', '', 'g') LIKE '628%') THEN 0
+        ELSE 1
+      END,
       CASE WHEN l.website = '' THEN 0 ELSE 1 END,
       l.rating DESC NULLS LAST,
       l.scraped_at DESC
@@ -106,17 +110,21 @@ export async function runDailyOutreach(pool, options = {}) {
   const leadsSent = [];
   const failedLeads = [];
 
+  console.log(`[Auto-Outreach] Menemukan ${candidates.length} calon lead terkurasi untuk dikontak.`);
+
   for (let i = 0; i < candidates.length; i++) {
     const lead = candidates[i];
     const phone = normalizePhone(lead.telepon) || lead.telepon;
     const cleanPhone = sanitizeTargetPhone(phone);
 
     if (!cleanPhone) {
+      console.warn(`[Auto-Outreach] [${i + 1}/${candidates.length}] Melewati ${lead.nama} (Nomor telepon tidak valid: "${lead.telepon}")`);
       failedLeads.push({ id: lead.id, nama: lead.nama, reason: 'Nomor telepon tidak valid' });
       continue;
     }
 
     const message = renderTemplate(template.body, lead);
+    console.log(`[Auto-Outreach] [${i + 1}/${candidates.length}] Mengirim WhatsApp ke ${lead.nama} (${cleanPhone})...`);
     const result = await sendFonnteMessage({ target: cleanPhone, message });
 
     if (result.ok) {
@@ -147,20 +155,28 @@ export async function runDailyOutreach(pool, options = {}) {
         }
         await client.query('COMMIT');
         leadsSent.push({ id: lead.id, nama: lead.nama, kota: lead.kota, phone: cleanPhone });
+        console.log(`[Auto-Outreach] [${i + 1}/${candidates.length}] Sukses terkirim ke ${lead.nama}`);
       } catch (dbErr) {
         await client.query('ROLLBACK');
+        console.error(`[Auto-Outreach] [${i + 1}/${candidates.length}] Gagal menyimpan riwayat status ke DB: ${dbErr.message}`);
         failedLeads.push({ id: lead.id, nama: lead.nama, reason: `Gagal simpan status DB: ${dbErr.message}` });
       } finally {
         client.release();
       }
     } else {
+      console.warn(`[Auto-Outreach] [${i + 1}/${candidates.length}] Gagal kirim ke ${lead.nama}: ${result.error}`);
       failedLeads.push({ id: lead.id, nama: lead.nama, reason: result.error });
     }
 
     // Berikan jeda acak antar pengiriman jika masih ada lead berikutnya
     if (i < candidates.length - 1) {
-      const delayMs = Math.floor(Math.random() * (maxDelaySec - minDelaySec + 1) + minDelaySec) * 1000;
-      await new Promise(resolve => setTimeout(resolve, delayMs));
+      const waitTime = result.ok
+        ? Math.floor(Math.random() * (maxDelaySec - minDelaySec + 1) + minDelaySec)
+        : 3;
+      if (result.ok) {
+        console.log(`[Auto-Outreach] Menunggu jeda aman ${waitTime} detik sebelum nomor berikutnya...`);
+      }
+      await new Promise(resolve => setTimeout(resolve, waitTime * 1000));
     }
   }
 
